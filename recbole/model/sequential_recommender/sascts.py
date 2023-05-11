@@ -25,7 +25,8 @@ import torch.nn.functional as F
 
 class SASCTS(SequentialRecommender):
     r"""
-    SASRec is the first sequential recommender based on self-attentive mechanism.
+    SASCTS is the first sequential recommender based on self-attentive mechanism.
+    Add CTS loss to SASRec
 
     NOTE:
         In the author's implementation, the Point-Wise Feed-Forward Network (PFFN) is implemented
@@ -119,6 +120,15 @@ class SASCTS(SequentialRecommender):
         return loss
 
     def cts_loss(self, z_i, z_j, temp, batch_size): #B * D    B * D
+        '''
+        args:
+            z_i: raw output of transformer: B * D
+            z_j: positive sample: B * D
+            
+        return:
+            labels: N
+            logits: N * C (number of classes)
+        '''
         N = 2 * batch_size
     
         z = torch.cat((z_i, z_j), dim=0)   #2B * D  
@@ -206,12 +216,14 @@ class SASCTS(SequentialRecommender):
         raw_seq_output = self.forward(item_seq, item_seq_len)
 
         # dropout can act as a data augmentation
+        # use dropout to augment the sequence (positive samples)
         if self.config['aug'] == 'self':
             cts_seq_output = self.forward(item_seq, item_seq_len)
         else:
             cts_aug, cts_aug_lengths = interaction['aug'], interaction['aug_lengths']
             cts_seq_output = self.forward(cts_aug, cts_aug_lengths)
 
+        
         cts_nce_logits, cts_nce_labels = self.cts_loss(raw_seq_output, cts_seq_output, temp=1.0,
                                                         batch_size=item_seq_len.shape[0])
         nce_loss = self.loss_fct(cts_nce_logits, cts_nce_labels)
